@@ -37,8 +37,8 @@ const userSchema = new mongoose.Schema({
         validate:{
             validator : function(el){
                 return el === this.password
-            }
-            message: "Password does not match"
+            },
+            Message: "Password does not match"
         }
     },
     phoneNumber:{
@@ -50,7 +50,63 @@ const userSchema = new mongoose.Schema({
         type:String,
         enum:["user","admin"],
         default:"user"
-    }
+    },
+    avatar:{
+        public_id:String,
+        url:String
+    },
+    passwordchangedAt:Date,
+    passwordResetToken:String,
+    passwordResetExpire:Date
+},
+    {timestamps:true}
+)
 
 
+
+// hash password
+// pre("save")=> runs before data is saved to database
+
+userSchema.pre("save", async function(){
+    if (!this.isModified("password")) return;
+
+    this.password = await bcrypt.hash(this.password,12)
+    this.passwordConfirm = undefined
 })
+
+// Password compare method
+// candidate password- original
+// userpassword - hashed
+
+userSchema.methods.correctpassword = async function(
+    candidatePassword, userPassword
+){
+    return await bcrypt.compare(candidatePassword,userPassword)
+}
+
+
+//checks whether user password changed or not after token was issued, if password is changed then token will be invalid, login again
+
+userSchema.methods.changePasswordAfter= function(JWTTimestamp){
+    if(this.passwordchangedAt){
+        const changedTimestamp=parseInt(
+            this.passwordchangedAt.getTime()/1000,10
+        )
+        return JWTTimestamp < changedTimestamp
+    }
+    return false;
+}
+
+// Generate JWT token custom func
+
+userSchema.methods.getJWTToken= function(){
+    return jwt.sign(
+        {id:this._id},
+        process.env.JWT_SECRET,
+        {expiresIn:process.env.JWT_EXPIRES}
+    )
+}
+
+
+
+module.exports = mongoose.model("User",userSchema)
